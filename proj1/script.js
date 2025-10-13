@@ -1,6 +1,7 @@
-
+// Financial Control System - Epic Edition
 const app = document.getElementById('app');
 
+// Data
 let categories = [
     { id: 1, name: 'Alimentação', type: 'expense', color: '#ef4444' },
     { id: 2, name: 'Transporte', type: 'expense', color: '#f59e0b' },
@@ -24,324 +25,352 @@ let modalType = '';
 let editingId = null;
 let formData = {};
 
+// Chart instances
+let lineChartInstance = null;
+let pieChartInstance = null;
+
+// Main render function
 function render() {
     const { totalIncome, totalExpense, balance } = calculateTotals();
-    const expensesByCategory = getExpensesByCategory();
-    const chartData = getMonthlyData();
 
     app.innerHTML = `
-        <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-            <div class="max-w-7xl mx-auto p-6">
-                <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
-                    <h1 class="text-3xl font-bold text-slate-800 mb-2">💰 Controle Financeiro Pessoal</h1>
-                    <p class="text-slate-600">Gerencie suas finanças de forma simples e eficiente</p>
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card income">
+                <div class="stat-card-header">
+                    <span class="stat-label">Receitas</span>
+                    <i data-lucide="trending-up" class="stat-icon"></i>
                 </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    <div class="card income">
-                        <div class="flex">
-                            <span class="text-green-100">Receitas</span>
-                            <i data-lucide="trending-up" class="w-6 h-6"></i>
-                        </div>
-                        <p class="text-3xl font-bold">R$ ${totalIncome.toFixed(2)}</p>
-                    </div>
-                    
-                    <div class="card expense">
-                        <div class="flex">
-                            <span class="text-red-100">Despesas</span>
-                            <i data-lucide="trending-down" class="w-6 h-6"></i>
-                        </div>
-                        <p class="text-3xl font-bold">R$ ${totalExpense.toFixed(2)}</p>
-                    </div>
-                    
-                    <div class="card ${balance >= 0 ? 'balance-positive' : 'balance-negative'}">
-                        <div class="flex">
-                            <span class="text-blue-100">Saldo</span>
-                            <i data-lucide="target" class="w-6 h-6"></i>
-                        </div>
-                        <p class="text-3xl font-bold">R$ ${balance.toFixed(2)}</p>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-2xl shadow-lg mb-6">
-                    <div class="tab-nav">
-                        <button class="${activeTab === 'dashboard' ? 'active' : ''}" onclick="setActiveTab('dashboard')">Painel</button>
-                        <button class="${activeTab === 'transactions' ? 'active' : ''}" onclick="setActiveTab('transactions')">Transações</button>
-                        <button class="${activeTab === 'categories' ? 'active' : ''}" onclick="setActiveTab('categories')">Categorias</button>
-                        <button class="${activeTab === 'goals' ? 'active' : ''}" onclick="setActiveTab('goals')">Metas</button>
-                    </div>
-
-                    <div class="p-6">
-                        ${renderTabContent(activeTab, { totalIncome, totalExpense, balance, expensesByCategory, chartData })}
-                    </div>
-                </div>
+                <div class="stat-value">R$ ${totalIncome.toFixed(2)}</div>
             </div>
-
-            ${showAddModal ? renderModal() : ''}
+            
+            <div class="stat-card expense">
+                <div class="stat-card-header">
+                    <span class="stat-label">Despesas</span>
+                    <i data-lucide="trending-down" class="stat-icon"></i>
+                </div>
+                <div class="stat-value">R$ ${totalExpense.toFixed(2)}</div>
+            </div>
+            
+            <div class="stat-card balance">
+                <div class="stat-card-header">
+                    <span class="stat-label">Saldo</span>
+                    <i data-lucide="target" class="stat-icon"></i>
+                </div>
+                <div class="stat-value">R$ ${balance.toFixed(2)}</div>
+            </div>
         </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn ${activeTab === 'dashboard' ? 'active' : ''}" onclick="setActiveTab('dashboard')">
+                Painel
+            </button>
+            <button class="tab-btn ${activeTab === 'transactions' ? 'active' : ''}" onclick="setActiveTab('transactions')">
+                Transações
+            </button>
+            <button class="tab-btn ${activeTab === 'categories' ? 'active' : ''}" onclick="setActiveTab('categories')">
+                Categorias
+            </button>
+            <button class="tab-btn ${activeTab === 'goals' ? 'active' : ''}" onclick="setActiveTab('goals')">
+                Metas
+            </button>
+        </div>
+
+        <!-- Content Section -->
+        <div class="content-section">
+            ${renderTabContent()}
+        </div>
+
+        ${showAddModal ? renderModal() : ''}
     `;
+
+    // Initialize Lucide icons
     lucide.createIcons();
+
+    // Render charts if on dashboard
+    if (activeTab === 'dashboard') {
+        setTimeout(() => renderCharts(), 100);
+    }
 }
 
-function renderTabContent(tab, data) {
-    switch (tab) {
+// Render tab content
+function renderTabContent() {
+    switch (activeTab) {
         case 'dashboard':
-            return `
-                <div class="space-y-6">
-                    <div class="flex-between-center">
-                        <h2 class="text-2xl font-bold text-slate-800">Visão Geral</h2>
-                        <button onclick="exportReport()" class="btn-primary">
-                            <i data-lucide="download" class="w-4 h-4"></i>
-                            Exportar Relatório
-                        </button>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div class="bg-slate-50 rounded-xl p-6">
-                            <h3 class="text-lg font-semibold mb-4">Receitas vs Despesas</h3>
-                            <div style="width: 100%; height: 250px;">
-                                <canvas id="lineChart"></canvas>
-                            </div>
-                        </div>
-
-                        <div class="bg-slate-50 rounded-xl p-6">
-                            <h3 class="text-lg font-semibold mb-4">Despesas por Categoria</h3>
-                            <div style="width: 100%; height: 250px;">
-                                <canvas id="pieChart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-slate-50 rounded-xl p-6">
-                        <h3 class="text-lg font-semibold mb-4">Progresso das Metas</h3>
-                        <div class="space-y-4">
-                            ${goals.map(goal => `
-                                <div>
-                                    <div class="flex-between-center mb-2">
-                                        <span class="font-medium">${goal.name}</span>
-                                        <span class="text-slate-600">
-                                            R$ ${goal.current.toFixed(2)} / R$ ${goal.target.toFixed(2)}
-                                        </span>
-                                    </div>
-                                    <div class="progress-bar-container">
-                                        <div
-                                            class="progress-bar"
-                                            style="width: ${Math.min((goal.current / goal.target) * 100, 100)}%"
-                                        ></div>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
+            return renderDashboard();
         case 'transactions':
-            return `
-                <div>
-                    <div class="flex-between-center mb-4">
-                        <h2 class="text-2xl font-bold text-slate-800">Transações</h2>
-                        <button onclick="openModal('transaction')" class="btn-primary">
-                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                            Nova Transação
-                        </button>
-                    </div>
-
-                    <div class="space-y-3">
-                        ${transactions.sort((a, b) => b.date.localeCompare(a.date)).map(t => {
-                            const category = categories.find(c => c.id === t.categoryId);
-                            return `
-                                <div class="list-item">
-                                    <div class="details">
-                                        <div class="icon-circle ${t.type}">
-                                            <i data-lucide="${t.type === 'income' ? 'trending-up' : 'trending-down'}" class="w-6 h-6"></i>
-                                        </div>
-                                        <div>
-                                            <p class="font-semibold">${t.description || t.name}</p>
-                                            <p class="text-sm text-slate-600">${category?.name || 'N/A'} • ${new Date(t.date).toLocaleDateString('pt-BR')}</p>
-                                        </div>
-                                    </div>
-                                    <div class="actions">
-                                        <span class="text-xl font-bold amount ${t.type}">
-                                            ${t.type === 'income' ? '+' : '-'} R$ ${t.amount.toFixed(2)}
-                                        </span>
-                                        <button onclick="openModal('transaction', ${t.id})" class="btn-icon">
-                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
-                                        </button>
-                                        <button onclick="deleteItem('transaction', ${t.id})" class="btn-icon delete">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-                </div>
-            `;
+            return renderTransactions();
         case 'categories':
-            return `
-                <div>
-                    <div class="flex-between-center mb-4">
-                        <h2 class="text-2xl font-bold text-slate-800">Categorias</h2>
-                        <button onclick="openModal('category')" class="btn-primary">
-                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                            Nova Categoria
-                        </button>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        ${categories.map(cat => `
-                            <div class="list-item category-item">
-                                <div class="details">
-                                    <div class="color-swatch" style="background-color: ${cat.color}"></div>
-                                    <div>
-                                        <p class="font-semibold">${cat.name}</p>
-                                        <p class="text-sm text-slate-600">${cat.type === 'income' ? 'Receita' : 'Despesa'}</p>
-                                    </div>
-                                </div>
-                                <div class="actions">
-                                    <button onclick="openModal('category', ${cat.id})" class="btn-icon">
-                                        <i data-lucide="edit-2" class="w-4 h-4"></i>
-                                    </button>
-                                    <button onclick="deleteItem('category', ${cat.id})" class="btn-icon delete">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
+            return renderCategories();
         case 'goals':
-            return `
-                <div>
-                    <div class="flex-between-center mb-4">
-                        <h2 class="text-2xl font-bold text-slate-800">Metas Financeiras</h2>
-                        <button onclick="openModal('goal')" class="btn-primary">
-                            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-                            Nova Meta
-                        </button>
-                    </div>
-
-                    <div class="space-y-4">
-                        ${goals.map(goal => `
-                            <div class="bg-slate-50 p-6 rounded-lg">
-                                <div class="flex-between-center mb-4">
-                                    <div>
-                                        <h3 class="text-lg font-semibold">${goal.name}</h3>
-                                        <p class="text-slate-600">
-                                            R$ ${goal.current.toFixed(2)} de R$ ${goal.target.toFixed(2)} (${((goal.current/goal.target)*100).toFixed(1)}%)
-                                        </p>
-                                    </div>
-                                    <div class="actions">
-                                        <button onclick="openModal('goal', ${goal.id})" class="btn-icon">
-                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
-                                        </button>
-                                        <button onclick="deleteItem('goal', ${goal.id})" class="btn-icon delete">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="progress-bar-container">
-                                    <div
-                                        class="progress-bar"
-                                        style="width: ${Math.min((goal.current / goal.target) * 100, 100)}%"
-                                    ></div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
+            return renderGoals();
         default:
             return '';
     }
 }
 
+// Render Dashboard
+function renderDashboard() {
+    return `
+        <div class="section-header">
+            <h2 class="section-title">Visão Geral</h2>
+            <button onclick="exportReport()" class="btn-primary">
+                <i data-lucide="download"></i>
+                Exportar Relatório
+            </button>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3 class="chart-title">⟨ Receitas vs Despesas ⟩</h3>
+                <canvas id="lineChart" style="max-height: 300px;"></canvas>
+            </div>
+
+            <div class="chart-container">
+                <h3 class="chart-title">⟨ Despesas por Categoria ⟩</h3>
+                <canvas id="pieChart" style="max-height: 300px;"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container" style="margin-top: 30px;">
+            <h3 class="chart-title">⟨ Progresso das Metas ⟩</h3>
+            ${goals.map(goal => `
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-label">${goal.name}</span>
+                        <span class="progress-value">R$ ${goal.current.toFixed(2)} / R$ ${goal.target.toFixed(2)}</span>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar" style="width: ${Math.min((goal.current / goal.target) * 100, 100)}%"></div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render Transactions
+function renderTransactions() {
+    const sortedTransactions = transactions.sort((a, b) => b.date.localeCompare(a.date));
+    
+    return `
+        <div class="section-header">
+            <h2 class="section-title">Transações</h2>
+            <button onclick="openModal('transaction')" class="btn-primary">
+                <i data-lucide="plus-circle"></i>
+                Nova Transação
+            </button>
+        </div>
+
+        <div class="items-list">
+            ${sortedTransactions.map(t => {
+                const category = categories.find(c => c.id === t.categoryId);
+                return `
+                    <div class="list-item">
+                        <div class="item-left">
+                            <div class="item-icon ${t.type}">
+                                <i data-lucide="${t.type === 'income' ? 'trending-up' : 'trending-down'}"></i>
+                            </div>
+                            <div class="item-details">
+                                <h3>${t.description || t.name}</h3>
+                                <p>${category?.name || 'N/A'} • ${new Date(t.date).toLocaleDateString('pt-BR')}</p>
+                            </div>
+                        </div>
+                        <div class="item-right">
+                            <span class="item-amount ${t.type}">
+                                ${t.type === 'income' ? '+' : '-'} R$ ${t.amount.toFixed(2)}
+                            </span>
+                            <div class="item-actions">
+                                <button onclick="openModal('transaction', ${t.id})" class="btn-icon">
+                                    <i data-lucide="edit-2"></i>
+                                </button>
+                                <button onclick="deleteItem('transaction', ${t.id})" class="btn-icon delete">
+                                    <i data-lucide="trash-2"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+// Render Categories
+function renderCategories() {
+    return `
+        <div class="section-header">
+            <h2 class="section-title">Categorias</h2>
+            <button onclick="openModal('category')" class="btn-primary">
+                <i data-lucide="plus-circle"></i>
+                Nova Categoria
+            </button>
+        </div>
+
+        <div class="categories-grid">
+            ${categories.map(cat => `
+                <div class="category-item">
+                    <div class="category-left">
+                        <div class="color-swatch" style="background-color: ${cat.color}"></div>
+                        <div class="category-info">
+                            <h3>${cat.name}</h3>
+                            <p>${cat.type === 'income' ? 'Receita' : 'Despesa'}</p>
+                        </div>
+                    </div>
+                    <div class="item-actions">
+                        <button onclick="openModal('category', ${cat.id})" class="btn-icon">
+                            <i data-lucide="edit-2"></i>
+                        </button>
+                        <button onclick="deleteItem('category', ${cat.id})" class="btn-icon delete">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render Goals
+function renderGoals() {
+    return `
+        <div class="section-header">
+            <h2 class="section-title">Metas Financeiras</h2>
+            <button onclick="openModal('goal')" class="btn-primary">
+                <i data-lucide="plus-circle"></i>
+                Nova Meta
+            </button>
+        </div>
+
+        <div class="items-list">
+            ${goals.map(goal => `
+                <div class="list-item">
+                    <div class="item-left">
+                        <div class="item-icon income">
+                            <i data-lucide="target"></i>
+                        </div>
+                        <div class="item-details">
+                            <h3>${goal.name}</h3>
+                            <p>R$ ${goal.current.toFixed(2)} de R$ ${goal.target.toFixed(2)} (${((goal.current/goal.target)*100).toFixed(1)}%)</p>
+                        </div>
+                    </div>
+                    <div class="item-right">
+                        <div class="progress-bar-wrapper" style="width: 200px; margin-right: 15px;">
+                            <div class="progress-bar" style="width: ${Math.min((goal.current / goal.target) * 100, 100)}%"></div>
+                        </div>
+                        <div class="item-actions">
+                            <button onclick="openModal('goal', ${goal.id})" class="btn-icon">
+                                <i data-lucide="edit-2"></i>
+                            </button>
+                            <button onclick="deleteItem('goal', ${goal.id})" class="btn-icon delete">
+                                <i data-lucide="trash-2"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render Modal
 function renderModal() {
     const title = editingId ? 'Editar' : 'Nova';
-    let specificFields = '';
+    let modalTitle = '';
+    let formFields = '';
 
     if (modalType === 'category') {
-        specificFields = `
+        modalTitle = `${title} Categoria`;
+        formFields = `
             <div class="form-group">
-                <label>Nome</label>
-                <input type="text" value="${formData.name || ''}" oninput="updateFormData('name', this.value)" />
+                <label class="form-label">Nome</label>
+                <input type="text" class="form-input" value="${formData.name || ''}" 
+                    oninput="updateFormData('name', this.value)" placeholder="Ex: Alimentação">
             </div>
             <div class="form-group">
-                <label>Tipo</label>
-                <select onchange="updateFormData('type', this.value)">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" onchange="updateFormData('type', this.value)">
                     <option value="expense" ${formData.type === 'expense' ? 'selected' : ''}>Despesa</option>
                     <option value="income" ${formData.type === 'income' ? 'selected' : ''}>Receita</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Cor</label>
-                <input type="color" value="${formData.color || '#3b82f6'}" oninput="updateFormData('color', this.value)" />
+                <label class="form-label">Cor</label>
+                <input type="color" class="form-input" value="${formData.color || '#3b82f6'}" 
+                    oninput="updateFormData('color', this.value)">
             </div>
         `;
     } else if (modalType === 'transaction') {
-        specificFields = `
+        modalTitle = `${title} Transação`;
+        formFields = `
             <div class="form-group">
-                <label>Descrição</label>
-                <input type="text" value="${formData.description || ''}" oninput="updateFormData('description', this.value)" />
+                <label class="form-label">Descrição</label>
+                <input type="text" class="form-input" value="${formData.description || ''}" 
+                    oninput="updateFormData('description', this.value)" placeholder="Ex: Supermercado">
             </div>
             <div class="form-group">
-                <label>Valor</label>
-                <input type="number" step="0.01" value="${formData.amount || ''}" oninput="updateFormData('amount', parseFloat(this.value))" />
+                <label class="form-label">Valor (R$)</label>
+                <input type="number" step="0.01" class="form-input" value="${formData.amount || ''}" 
+                    oninput="updateFormData('amount', parseFloat(this.value))" placeholder="0.00">
             </div>
             <div class="form-group">
-                <label>Data</label>
-                <input type="date" value="${formData.date || new Date().toISOString().split('T')[0]}" oninput="updateFormData('date', this.value)" />
+                <label class="form-label">Data</label>
+                <input type="date" class="form-input" value="${formData.date || new Date().toISOString().split('T')[0]}" 
+                    oninput="updateFormData('date', this.value)">
             </div>
             <div class="form-group">
-                <label>Categoria</label>
-                <select onchange="updateFormData('categoryId', parseInt(this.value))">
+                <label class="form-label">Categoria</label>
+                <select class="form-select" onchange="updateFormData('categoryId', parseInt(this.value))">
                     ${categories.map(cat => `
-                        <option value="${cat.id}" ${formData.categoryId === cat.id ? 'selected' : ''}>${cat.name} (${cat.type === 'income' ? 'Receita' : 'Despesa'})</option>
+                        <option value="${cat.id}" ${formData.categoryId === cat.id ? 'selected' : ''}>
+                            ${cat.name} (${cat.type === 'income' ? 'Receita' : 'Despesa'})
+                        </option>
                     `).join('')}
                 </select>
             </div>
             <div class="form-group">
-                <label>Tipo</label>
-                <select onchange="updateFormData('type', this.value)">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" onchange="updateFormData('type', this.value)">
                     <option value="expense" ${formData.type === 'expense' ? 'selected' : ''}>Despesa</option>
                     <option value="income" ${formData.type === 'income' ? 'selected' : ''}>Receita</option>
                 </select>
             </div>
         `;
     } else if (modalType === 'goal') {
-        specificFields = `
+        modalTitle = `${title} Meta`;
+        formFields = `
             <div class="form-group">
-                <label>Nome</label>
-                <input type="text" value="${formData.name || ''}" oninput="updateFormData('name', this.value)" />
+                <label class="form-label">Nome</label>
+                <input type="text" class="form-input" value="${formData.name || ''}" 
+                    oninput="updateFormData('name', this.value)" placeholder="Ex: Economia Mensal">
             </div>
             <div class="form-group">
-                <label>Meta (R$)</label>
-                <input type="number" step="0.01" value="${formData.target || ''}" oninput="updateFormData('target', parseFloat(this.value))" />
+                <label class="form-label">Meta (R$)</label>
+                <input type="number" step="0.01" class="form-input" value="${formData.target || ''}" 
+                    oninput="updateFormData('target', parseFloat(this.value))" placeholder="0.00">
             </div>
             <div class="form-group">
-                <label>Atual (R$)</label>
-                <input type="number" step="0.01" value="${formData.current || 0}" oninput="updateFormData('current', parseFloat(this.value))" />
+                <label class="form-label">Valor Atual (R$)</label>
+                <input type="number" step="0.01" class="form-input" value="${formData.current || 0}" 
+                    oninput="updateFormData('current', parseFloat(this.value))" placeholder="0.00">
             </div>
         `;
     }
 
     return `
-        <div class="modal-overlay">
-            <div class="modal-content">
+        <div class="modal-overlay" onclick="closeModalOnOverlay(event)">
+            <div class="modal-content" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                    <h3>${title} ${modalType === 'category' ? 'Categoria' : modalType === 'transaction' ? 'Transação' : 'Meta'}</h3>
-                    <button onclick="closeModal()" class="modal-close-btn">
-                        <i data-lucide="x" class="w-5 h-5"></i>
-                    </button>
+                    <h3 class="modal-title">${modalTitle}</h3>
+                    <button onclick="closeModal()" class="modal-close">×</button>
                 </div>
-                <div class="space-y-4">
-                    ${specificFields}
+                <div class="modal-body">
+                    ${formFields}
                 </div>
                 <div class="modal-actions">
                     <button onclick="closeModal()" class="btn-secondary">Cancelar</button>
                     <button onclick="handleSubmit()" class="btn-success">
-                        <i data-lucide="check" class="w-4 h-4"></i>
                         ${editingId ? 'Salvar' : 'Adicionar'}
                     </button>
                 </div>
@@ -350,18 +379,13 @@ function renderModal() {
     `;
 }
 
-function updateFormData(key, value) {
-    formData = { ...formData, [key]: value };
-}
-
+// Tab navigation
 function setActiveTab(tab) {
     activeTab = tab;
     render();
-    if (tab === 'dashboard') {
-        renderCharts();
-    }
 }
 
+// Modal functions
 function openModal(type, id = null) {
     modalType = type;
     showAddModal = true;
@@ -374,9 +398,19 @@ function openModal(type, id = null) {
         else if (type === 'goal') item = goals.find(g => g.id === id);
         formData = { ...item };
     } else {
-        if (type === 'category') formData = { name: '', type: 'expense', color: '#3b82f6' };
-        else if (type === 'transaction') formData = { description: '', amount: '', date: new Date().toISOString().split('T')[0], categoryId: categories[0]?.id, type: 'expense' };
-        else if (type === 'goal') formData = { name: '', target: '', current: 0 };
+        if (type === 'category') {
+            formData = { name: '', type: 'expense', color: '#3b82f6' };
+        } else if (type === 'transaction') {
+            formData = { 
+                description: '', 
+                amount: '', 
+                date: new Date().toISOString().split('T')[0], 
+                categoryId: categories[0]?.id, 
+                type: 'expense' 
+            };
+        } else if (type === 'goal') {
+            formData = { name: '', target: '', current: 0 };
+        }
     }
     render();
 }
@@ -388,16 +422,26 @@ function closeModal() {
     render();
 }
 
+function closeModalOnOverlay(event) {
+    if (event.target.classList.contains('modal-overlay')) {
+        closeModal();
+    }
+}
+
+function updateFormData(key, value) {
+    formData = { ...formData, [key]: value };
+}
+
 function handleSubmit() {
     if (modalType === 'category') {
-        if (!formData.name) return;
+        if (!formData.name) return alert('Por favor, preencha o nome da categoria.');
         if (editingId) {
             categories = categories.map(c => c.id === editingId ? { ...formData, id: editingId } : c);
         } else {
             categories = [...categories, { ...formData, id: Date.now() }];
         }
     } else if (modalType === 'transaction') {
-        if (!formData.description || !formData.amount) return;
+        if (!formData.description || !formData.amount) return alert('Por favor, preencha todos os campos obrigatórios.');
         const data = { ...formData, amount: parseFloat(formData.amount) };
         if (editingId) {
             transactions = transactions.map(t => t.id === editingId ? { ...data, id: editingId } : t);
@@ -405,8 +449,12 @@ function handleSubmit() {
             transactions = [...transactions, { ...data, id: Date.now() }];
         }
     } else if (modalType === 'goal') {
-        if (!formData.name || !formData.target) return;
-        const data = { ...formData, target: parseFloat(formData.target), current: parseFloat(formData.current || 0) };
+        if (!formData.name || !formData.target) return alert('Por favor, preencha todos os campos obrigatórios.');
+        const data = { 
+            ...formData, 
+            target: parseFloat(formData.target), 
+            current: parseFloat(formData.current || 0) 
+        };
         if (editingId) {
             goals = goals.map(g => g.id === editingId ? { ...data, id: editingId } : g);
         } else {
@@ -416,13 +464,17 @@ function handleSubmit() {
     closeModal();
 }
 
+// Delete item
 function deleteItem(type, id) {
+    if (!confirm('Tem certeza que deseja excluir este item?')) return;
+    
     if (type === 'category') categories = categories.filter(c => c.id !== id);
     if (type === 'transaction') transactions = transactions.filter(t => t.id !== id);
     if (type === 'goal') goals = goals.filter(g => g.id !== id);
     render();
 }
 
+// Calculations
 function calculateTotals() {
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
@@ -435,7 +487,8 @@ function getExpensesByCategory() {
         .filter(c => c.type === 'expense')
         .map(cat => ({
             name: cat.name,
-            value: transactions.filter(t => t.categoryId === cat.id && t.type === 'expense').reduce((sum, t) => sum + t.amount, 0),
+            value: transactions.filter(t => t.categoryId === cat.id && t.type === 'expense')
+                .reduce((sum, t) => sum + t.amount, 0),
             color: cat.color
         }))
         .filter(item => item.value > 0);
@@ -452,22 +505,27 @@ function getMonthlyData() {
     return Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
 }
 
+// Export report
 function exportReport() {
     const { totalIncome, totalExpense, balance } = calculateTotals();
     const report = `
-RELATÓRIO FINANCEIRO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⟨ RELATÓRIO FINANCEIRO ⟩
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Data: ${new Date().toLocaleDateString('pt-BR')}
 
-RESUMO
+◆ RESUMO
 Receitas: R$ ${totalIncome.toFixed(2)}
 Despesas: R$ ${totalExpense.toFixed(2)}
 Saldo: R$ ${balance.toFixed(2)}
 
-TRANSAÇÕES
+◆ TRANSAÇÕES
 ${transactions.map(t => `${t.date} | ${t.description || t.name} | ${t.type === 'income' ? '+' : '-'}R$ ${t.amount.toFixed(2)}`).join('\n')}
 
-METAS
+◆ METAS
 ${goals.map(g => `${g.name}: R$ ${g.current.toFixed(2)} / R$ ${g.target.toFixed(2)} (${((g.current/g.target)*100).toFixed(1)}%)`).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     `.trim();
     
     const blob = new Blob([report], { type: 'text/plain' });
@@ -475,20 +533,31 @@ ${goals.map(g => `${g.name}: R$ ${g.current.toFixed(2)} / R$ ${g.target.toFixed(
     const a = document.createElement('a');
     a.href = url;
     a.download = `relatorio-financeiro-${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a); // Required for Firefox
+    document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a); // Clean up
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
+// Render charts
 function renderCharts() {
     const chartData = getMonthlyData();
     const expensesByCategory = getExpensesByCategory();
 
+    // Destroy existing chart instances
+    if (lineChartInstance) {
+        lineChartInstance.destroy();
+        lineChartInstance = null;
+    }
+    if (pieChartInstance) {
+        pieChartInstance.destroy();
+        pieChartInstance = null;
+    }
+
     // Line Chart
     const lineCtx = document.getElementById('lineChart');
     if (lineCtx) {
-        new Chart(lineCtx, {
+        lineChartInstance = new Chart(lineCtx, {
             type: 'line',
             data: {
                 labels: chartData.map(d => d.month),
@@ -499,7 +568,13 @@ function renderCharts() {
                         borderColor: '#10b981',
                         backgroundColor: 'rgba(16, 185, 129, 0.2)',
                         fill: true,
-                        tension: 0.3
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
                     },
                     {
                         label: 'Despesas',
@@ -507,7 +582,13 @@ function renderCharts() {
                         borderColor: '#ef4444',
                         backgroundColor: 'rgba(239, 68, 68, 0.2)',
                         fill: true,
-                        tension: 0.3
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#ef4444',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2
                     }
                 ]
             },
@@ -517,17 +598,63 @@ function renderCharts() {
                 plugins: {
                     legend: {
                         position: 'top',
+                        labels: {
+                            color: '#e0e0e0',
+                            font: {
+                                family: 'Rajdhani',
+                                size: 14,
+                                weight: 600
+                            },
+                            padding: 15
+                        }
                     },
-                    title: {
-                        display: false,
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                        titleColor: '#00ffff',
+                        bodyColor: '#e0e0e0',
+                        borderColor: 'rgba(0, 255, 255, 0.5)',
+                        borderWidth: 1,
+                        padding: 12,
+                        titleFont: {
+                            family: 'Orbitron',
+                            size: 14
+                        },
+                        bodyFont: {
+                            family: 'Rajdhani',
+                            size: 13
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        beginAtZero: true
+                        grid: {
+                            color: 'rgba(0, 255, 255, 0.1)',
+                            borderColor: 'rgba(0, 255, 255, 0.3)'
+                        },
+                        ticks: {
+                            color: '#888',
+                            font: {
+                                family: 'Rajdhani',
+                                size: 12
+                            }
+                        }
                     },
                     y: {
-                        beginAtZero: true
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 255, 255, 0.1)',
+                            borderColor: 'rgba(0, 255, 255, 0.3)'
+                        },
+                        ticks: {
+                            color: '#888',
+                            font: {
+                                family: 'Rajdhani',
+                                size: 12
+                            },
+                            callback: function(value) {
+                                return 'R$ ' + value.toFixed(0);
+                            }
+                        }
                     }
                 }
             }
@@ -536,16 +663,18 @@ function renderCharts() {
 
     // Pie Chart
     const pieCtx = document.getElementById('pieChart');
-    if (pieCtx) {
-        new Chart(pieCtx, {
-            type: 'pie',
+    if (pieCtx && expensesByCategory.length > 0) {
+        pieChartInstance = new Chart(pieCtx, {
+            type: 'doughnut',
             data: {
                 labels: expensesByCategory.map(d => d.name),
                 datasets: [
                     {
                         data: expensesByCategory.map(d => d.value),
                         backgroundColor: expensesByCategory.map(d => d.color),
-                        hoverOffset: 4
+                        borderColor: '#000',
+                        borderWidth: 2,
+                        hoverOffset: 15
                     }
                 ]
             },
@@ -554,10 +683,43 @@ function renderCharts() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top',
+                        position: 'right',
+                        labels: {
+                            color: '#e0e0e0',
+                            font: {
+                                family: 'Rajdhani',
+                                size: 13,
+                                weight: 600
+                            },
+                            padding: 12,
+                            boxWidth: 15,
+                            boxHeight: 15
+                        }
                     },
-                    title: {
-                        display: false,
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                        titleColor: '#00ffff',
+                        bodyColor: '#e0e0e0',
+                        borderColor: 'rgba(0, 255, 255, 0.5)',
+                        borderWidth: 1,
+                        padding: 12,
+                        titleFont: {
+                            family: 'Orbitron',
+                            size: 14
+                        },
+                        bodyFont: {
+                            family: 'Rajdhani',
+                            size: 13
+                        },
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: R$ ${value.toFixed(2)} (${percentage}%)`;
+                            }
+                        }
                     }
                 }
             }
@@ -567,7 +729,3 @@ function renderCharts() {
 
 // Initial render
 render();
-// Render charts after initial render if dashboard is active
-if (activeTab === 'dashboard') {
-    renderCharts();
-}
